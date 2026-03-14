@@ -6,7 +6,7 @@
 <title>Checkers — Classic Board Game</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Crimson+Pro:wght@300;400;600&display=swap" rel="stylesheet"/>
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 :root{
@@ -434,7 +434,8 @@ function showGame(){
   document.getElementById('lobby').classList.remove('active');
   document.getElementById('game').classList.add('active');
   document.getElementById('conn-banner').classList.remove('show');
-  document.getElementById('waiting-overlay').classList.remove('show');
+  // Only hide waiting overlay for non-online or host (host goes first)
+  if(!onlineMode || myRole==='host') showWaitingOverlay(false);
   resetGame();
 }
 function goMenu(){
@@ -526,7 +527,8 @@ function setupConn(role){
   conn.on('open',()=>{
     if(role==='guest'){
       document.getElementById('join-dot').className='status-dot connected';
-      document.getElementById('join-status').textContent='Connected! Waiting to start...';
+      document.getElementById('join-status').textContent='Connected! Game starting...';
+      // Guest is ready — host will send 'start' message which triggers showGame on guest
     }
   });
   conn.on('data',data=>handleOnlineMsg(data));
@@ -534,6 +536,7 @@ function setupConn(role){
     if(document.getElementById('game').classList.contains('active')){
       showConnBanner(false,'Opponent disconnected');
       setMsg('Opponent left the game');
+      ge=true; stopTimer();
     }
   });
   conn.on('error',()=>{
@@ -563,29 +566,55 @@ function startOnlineGame(role){
 }
 
 function handleOnlineMsg(data){
-  if(data.type==='start'||data.type==='state'){
-    board=data.board;p1cap=data.p1cap;p2cap=data.p2cap;turn=data.turn;
+  if(data.type==='start'){
+    // Guest receives start — switch to game screen first if not already there
+    if(!document.getElementById('game').classList.contains('active')){
+      document.getElementById('p1name').textContent='Opponent';
+      document.getElementById('p2name').textContent='You';
+      document.getElementById('mode-tag').textContent='Online · You=Black';
+      document.getElementById('hud2').classList.add('me');
+      onlineMode=true; myRole='guest'; aiMode=false;
+      document.getElementById('menu').classList.remove('active');
+      document.getElementById('lobby').classList.remove('active');
+      document.getElementById('game').classList.add('active');
+      document.getElementById('conn-banner').classList.remove('show');
+      document.getElementById('winner-ov').classList.remove('show');
+      document.getElementById('waiting-overlay').classList.remove('show');
+    }
+    board=data.board; p1cap=data.p1cap; p2cap=data.p2cap; turn=data.turn;
+    timerSecs=data.timerSecs||300;
+    // Start guest timer in sync
+    clearInterval(timerInterval);
+    updTimer();
+    timerInterval=setInterval(()=>{timerSecs--;updTimer();if(timerSecs<=0){clearInterval(timerInterval);timeUp();}},1000);
+    sel=null; vm=[];
+    ge=false;
+    showWaitingOverlay(true); // guest waits — it's red's (host's) turn first
+    updHUD(); render(); setMsg('');
+    showConnBanner(true,'Connected — Game On!');
+  } else if(data.type==='state'){
+    board=data.board; p1cap=data.p1cap; p2cap=data.p2cap; turn=data.turn;
     if(data.timerSecs!==undefined)timerSecs=data.timerSecs;
-    sel=null;vm=[];
-    showWaitingOverlay(false);
-    updHUD();render();setMsg('');
-    // check win conditions received from host
-    if(data.gameOver){ge=true;showWin(data.winnerRed,data.reason);return;}
+    sel=null; vm=[];
+    // It's now my turn — hide waiting overlay
+    const isMyTurn=(myRole==='host')?turn===R:turn===B;
+    showWaitingOverlay(!isMyTurn);
+    updHUD(); render(); setMsg('');
+    if(data.gameOver){ge=true; stopTimer(); showWin(data.winnerRed,data.reason); return;}
   } else if(data.type==='timeup'){
-    ge=true;stopTimer();
+    ge=true; stopTimer();
     document.getElementById('winner-title').textContent=data.title;
     document.getElementById('winner-sub').textContent=data.sub;
     buildWinnerBtns(true);
     document.getElementById('winner-ov').classList.add('show');
   } else if(data.type==='rematch'){
-    if(ge){
-      // auto start rematch
+    if(myRole==='host'){
+      // Host accepts and starts fresh, sends state to guest
       resetGame();
-      sendState({type:'start'});
     }
   } else if(data.type==='left'){
     showConnBanner(false,'Opponent left the game');
-    setMsg('Opponent left');ge=true;
+    setMsg('Opponent left'); ge=true; stopTimer();
   }
 }
 
