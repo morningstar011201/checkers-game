@@ -159,15 +159,16 @@ h1.game-title{font-family:'Cinzel',serif;font-size:clamp(42px,12vw,68px);font-we
 
 /* Board */
 .board-container{position:relative;width:100%}
+.board-clip{overflow:hidden;border-radius:4px;width:100%;}
 #board{display:grid;grid-template-columns:repeat(8,1fr);border:3px solid var(--bd-border);border-radius:4px;
-  overflow:hidden;width:100%;aspect-ratio:1/1;box-shadow:0 8px 40px rgba(0,0,0,.7),0 0 0 1px rgba(201,168,76,.1)}
-.cell{display:flex;align-items:center;justify-content:center;position:relative}
+  overflow:visible;width:100%;aspect-ratio:1/1;box-shadow:0 8px 40px rgba(0,0,0,.7),0 0 0 1px rgba(201,168,76,.1)}
+.cell{display:flex;align-items:center;justify-content:center;position:relative;overflow:visible}
 .cell.light{background:var(--bd-light)}.cell.dark{background:var(--bd-dark)}
 .cell.sel{background:#ffd700 !important;filter:brightness(1.05)}
 .cell.mv{background:#90ee90 !important;opacity:.8;cursor:pointer}
 .cell.jmp{background:#ff6b35 !important;opacity:.85;cursor:pointer}
 .piece{border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;
-  user-select:none;-webkit-user-select:none;transition:transform .12s,box-shadow .12s;will-change:transform;position:relative}
+  user-select:none;-webkit-user-select:none;transition:box-shadow .12s;will-change:transform;position:relative;overflow:visible}
 .piece:active{transform:scale(.91)}
 .piece.rp{background:radial-gradient(circle at 38% 35%,#e74c3c,#c0392b 55%,#7b241c 85%);
   box-shadow:0 3px 8px rgba(0,0,0,.6),inset 0 1px 4px rgba(255,255,255,.25),inset 0 -2px 3px rgba(0,0,0,.3)}
@@ -180,10 +181,29 @@ h1.game-title{font-family:'Cinzel',serif;font-size:clamp(42px,12vw,68px);font-we
 @keyframes must-glow{from{box-shadow:0 0 0px 2px rgba(255,160,0,.3),0 3px 8px rgba(0,0,0,.6)}to{box-shadow:0 0 10px 4px rgba(255,160,0,.75),0 3px 8px rgba(0,0,0,.6)}}
 .mv-dot{width:30%;height:30%;border-radius:50%;background:rgba(0,90,0,.4);pointer-events:none}
 .jmp-dot{width:36%;height:36%;border-radius:50%;background:rgba(160,40,0,.45);pointer-events:none}
+
+/* Piece slide animation */
+.piece.sliding{
+  animation: piece-slide 0.22s cubic-bezier(.25,.8,.25,1) forwards;
+  z-index: 20;
+  pointer-events: none;
+}
+@keyframes piece-slide-placeholder{ from{transform:translate(var(--sx),var(--sy))} to{transform:translate(0,0)} }
 /* Opponent turn indicator - no overlay */
 #opp-turn-msg{display:none;font-family:'Cinzel',serif;font-size:13px;color:var(--text2);
   letter-spacing:2px;text-align:center;padding:6px 0}
 #opp-turn-msg.show{display:block}
+
+/* Turn skip countdown */
+#skip-bar{width:100%;display:none;flex-direction:column;gap:4px;padding:4px 0}
+#skip-bar.show{display:flex}
+#skip-track{width:100%;height:5px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden}
+#skip-fill{height:100%;border-radius:3px;background:var(--gold);transition:width 1s linear;width:100%}
+#skip-fill.urgent{background:#e74c3c}
+#skip-info{display:flex;justify-content:space-between;align-items:center;font-family:'Cinzel',serif;font-size:11px;color:var(--text3);letter-spacing:1px}
+.strikes-display{display:flex;gap:4px}
+.strike-dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.2)}
+.strike-dot.used{background:#e74c3c;border-color:#e74c3c}
 
 /* Status & controls */
 .status-msg{min-height:22px;font-family:'Cinzel',serif;font-size:clamp(12px,3.5vw,14px);color:var(--gold);letter-spacing:1px;text-align:center}
@@ -266,7 +286,7 @@ h1.game-title{font-family:'Cinzel',serif;font-size:clamp(42px,12vw,68px);font-we
       </div>
       <button id="start-ai-btn" onclick="startAI()">Play vs AI</button>
     </div>
-    <div class="menu-footer">Touch-friendly · Works on any device · No install needed</div>
+    <div class="menu-footer">Works on any device · No install needed</div>
   </div>
 </div>
 
@@ -351,8 +371,18 @@ h1.game-title{font-family:'Cinzel',serif;font-size:clamp(42px,12vw,68px);font-we
 
     <div id="opp-turn-msg">⏳ Waiting for opponent's move...</div>
 
+    <div id="skip-bar">
+      <div id="skip-info">
+        <span id="skip-label">TURN SKIP IN <b id="skip-countdown">10</b>s</span>
+        <div class="strikes-display" id="strikes-display"></div>
+      </div>
+      <div id="skip-track"><div id="skip-fill"></div></div>
+    </div>
+
     <div class="board-container">
-      <div id="board"></div>
+      <div class="board-clip">
+        <div id="board"></div>
+      </div>
       <div id="winner-ov">
         <div class="winner-crown">♛</div>
         <div class="winner-title" id="winner-title">Red Wins!</div>
@@ -379,6 +409,8 @@ h1.game-title{font-family:'Cinzel',serif;font-size:clamp(42px,12vw,68px);font-we
 const E=0,R=1,B=2,RK=3,BK=4;
 let board,turn,sel,vm,ge,p1cap,p2cap,aiMode,aiDiff,aiThinking;
 let timerSecs,timerInterval;
+let skipSecs,skipInterval,strikes; // turn-skip system
+let lastMove=null; // for slide animation
 
 // ════════ ONLINE STATE ════════
 let onlineMode=false,myRole=null; // 'host' or 'guest'
@@ -435,7 +467,7 @@ function showGame(){
   resetGame();
 }
 function goMenu(){
-  stopTimer();destroyPeer();
+  stopTimer();stopSkipTimer();destroyPeer();
   document.getElementById('game').classList.remove('active');
   document.getElementById('lobby').classList.remove('active');
   document.getElementById('menu').classList.add('active');
@@ -443,7 +475,7 @@ function goMenu(){
   document.getElementById('ai-arrow').textContent='›';
 }
 function leaveGame(){
-  stopTimer();
+  stopTimer();stopSkipTimer();
   if(onlineMode&&conn){try{conn.send({type:'left'});}catch(e){}}
   destroyPeer();
   goMenu();
@@ -606,12 +638,16 @@ function handleOnlineMsg(data){
   } else if(data.type==='state'){
     board=data.board; p1cap=data.p1cap; p2cap=data.p2cap; turn=data.turn;
     if(data.timerSecs!==undefined)timerSecs=data.timerSecs;
+    if(data.strikes)strikes=data.strikes;
     sel=null; vm=[];
     // It's now my turn — hide waiting overlay
     const isMyTurn=(myRole==='host')?turn===R:turn===B;
     showWaitingOverlay(!isMyTurn);
     updHUD(); render(); setMsg('');
-    if(data.gameOver){ge=true; stopTimer(); showWin(data.winnerRed,data.reason); return;}
+    if(data.gameOver){ge=true; stopTimer(); stopSkipTimer(); showWin(data.winnerRed,data.reason); return;}
+    // Guest: start skip timer when it's their turn
+    if(isMyTurn) startSkipTimer();
+    else stopSkipTimer();
   } else if(data.type==='timeup'){
     ge=true; stopTimer();
     document.getElementById('winner-title').textContent=data.title;
@@ -768,6 +804,89 @@ function startTimer(){
   },1000);
 }
 function stopTimer(){clearInterval(timerInterval);}
+
+// ════════ TURN SKIP SYSTEM ════════
+const SKIP_SECS=10, MAX_STRIKES=3;
+
+function startSkipTimer(){
+  clearInterval(skipInterval);
+  skipSecs=SKIP_SECS;
+  updSkipBar();
+  document.getElementById('skip-bar').classList.add('show');
+  skipInterval=setInterval(()=>{
+    skipSecs--;
+    updSkipBar();
+    if(skipSecs<=0){
+      clearInterval(skipInterval);
+      // Only host handles skip logic in online mode to stay in sync
+      if(!onlineMode||(onlineMode&&myRole==='host')){
+        executeTurnSkip();
+      }
+    }
+  },1000);
+}
+
+function stopSkipTimer(){
+  clearInterval(skipInterval);
+  document.getElementById('skip-bar').classList.remove('show');
+}
+
+function updSkipBar(){
+  const pct=(skipSecs/SKIP_SECS)*100;
+  const fill=document.getElementById('skip-fill');
+  fill.style.width=pct+'%';
+  fill.classList.toggle('urgent',skipSecs<=3);
+  document.getElementById('skip-countdown').textContent=skipSecs;
+  // Update skip label to show whose turn
+  const who=turn===R?document.getElementById('p1name').textContent:document.getElementById('p2name').textContent;
+  document.getElementById('skip-label').innerHTML=`${who}: MOVE IN <b id="skip-countdown">${skipSecs}</b>s`;
+  updStrikeDots();
+}
+
+function updStrikeDots(){
+  const cont=document.getElementById('strikes-display');
+  cont.innerHTML='';
+  // Show strikes for the player whose turn it is
+  const s=strikes[turn]||0;
+  for(let i=0;i<MAX_STRIKES;i++){
+    const d=document.createElement('div');
+    d.className='strike-dot'+(i<s?' used':'');
+    cont.appendChild(d);
+  }
+}
+
+function executeTurnSkip(){
+  if(ge)return;
+  strikes[turn]=(strikes[turn]||0)+1;
+  showToast(`Turn skipped! (${strikes[turn]}/${MAX_STRIKES} strikes)`);
+  if(strikes[turn]>=MAX_STRIKES){
+    // This player loses
+    const redLoses=turn===R;
+    endGame(!redLoses);
+    if(onlineMode&&myRole==='host')sendState({type:'state',gameOver:true,winnerRed:!redLoses,reason:'Opponent ran out of turns!'});
+    return;
+  }
+  // Skip turn
+  turn=turn===R?B:R;
+  updHUD();
+  const{rc,bc}=countPieces(board);
+  if(rc===0){endGame(false);return;}
+  if(bc===0){endGame(true);return;}
+  if(!allMoves(board,turn).length){endGame(turn===B);return;}
+  render();setMsg('Turn skipped!');
+  if(onlineMode&&myRole==='host'){
+    showWaitingOverlay(turn===R?false:(myRole==='host'));
+    sendState({type:'state',strikes});
+  }
+  if(aiMode&&turn===B&&!ge){
+    stopSkipTimer();
+    document.getElementById('ai-thinking').classList.add('show');
+    aiThinking=true;
+    setTimeout(doAIMove, 700);
+    return;
+  }
+  startSkipTimer();
+}
 function updTimer(){
   const m=Math.floor(timerSecs/60),s=timerSecs%60;
   const el=document.getElementById('timer-display');
@@ -795,10 +914,14 @@ function resetGame(){
   for(let r=0;r<3;r++)for(let c=0;c<8;c++)if((r+c)%2===1)board[r][c]=B;
   for(let r=5;r<8;r++)for(let c=0;c<8;c++)if((r+c)%2===1)board[r][c]=R;
   turn=R;sel=null;vm=[];ge=false;p1cap=0;p2cap=0;aiThinking=false;rematchPending=false;
+  strikes={[R]:0,[B]:0};lastMove=null;
   document.getElementById('winner-ov').classList.remove('show');
   document.getElementById('ai-thinking').classList.remove('show');
   showWaitingOverlay(false);
   startTimer();updHUD();render();setMsg('');
+  // Start skip timer (host only in online, both in local)
+  if(!onlineMode||myRole==='host') startSkipTimer();
+  else stopSkipTimer();
   if(onlineMode&&myRole==='host')sendState({type:'start'});
   else if(onlineMode&&myRole==='guest'){
     // guest requests rematch — host controls it
@@ -840,6 +963,8 @@ function doMove(r,c){
   if(!sel||aiThinking)return;
   const move=vm.find(m=>m.to[0]===r&&m.to[1]===c);
   if(!move)return;
+  stopSkipTimer();
+  lastMove={from:[...move.from],to:[r,c]};
   board=applyMove(board,move);
   if(move.cap){
     if(turn===R)p1cap++;else p2cap++;
@@ -861,8 +986,11 @@ function doMove(r,c){
   if(onlineMode){
     showWaitingOverlay(true);
     sendState({type:'state'});
+  } else {
+    startSkipTimer();
   }
   if(aiMode&&turn===B&&!ge){
+    stopSkipTimer();
     document.getElementById('ai-thinking').classList.add('show');
     aiThinking=true;
     const delay=aiDiff==='easy'?400:aiDiff==='medium'?700:1000;
@@ -880,7 +1008,7 @@ function showWin(redWon,reason){
 }
 
 function endGame(redWon){
-  ge=true;stopTimer();
+  ge=true;stopTimer();stopSkipTimer();
   showWin(redWon,'');
   if(onlineMode&&myRole==='host'){
     sendState({type:'state',gameOver:true,winnerRed:redWon,reason:''});
@@ -910,8 +1038,20 @@ function render(){
   boardEl.innerHTML='';
   const mustJumpPieces=ge?[]:allJumps(board,turn).map(j=>j.from[0]+','+j.from[1]);
   const selHasCapture=sel&&vm.some(m=>m.cap);
-  // Online guest sees board flipped (their pieces at bottom)
   const flip=onlineMode&&myRole==='guest';
+
+  // Compute slide offset for piece animation
+  let slideFrom=null;
+  if(lastMove){
+    const[fr,fc]=lastMove.from;
+    const[tr,tc]=lastMove.to;
+    const dispFr=flip?7-fr:fr, dispFc=flip?7-fc:fc;
+    const dispTr=flip?7-tr:tr,  dispTc=flip?7-tc:tc;
+    const dxPx=(dispFc-dispTc)*cs;
+    const dyPx=(dispFr-dispTr)*cs;
+    slideFrom={r:tr,c:tc,dx:dxPx,dy:dyPx};
+  }
+
   for(let ri=0;ri<8;ri++){
     for(let ci=0;ci<8;ci++){
       const r=flip?7-ri:ri;
@@ -930,14 +1070,24 @@ function render(){
         const ps=Math.round(cs*.74);
         piece.className='piece '+(iR(p)?'rp':'bp')+(iK(p)?' king':'');
         piece.style.cssText=`width:${ps}px;height:${ps}px`;
+        // Apply slide animation to the moved piece — start at offset, animate to 0
+        if(slideFrom&&slideFrom.r===r&&slideFrom.c===c&&(slideFrom.dx!==0||slideFrom.dy!==0)){
+          // 1. Place piece at FROM position instantly (no transition)
+          piece.style.transform=`translate(${slideFrom.dx}px,${slideFrom.dy}px)`;
+          piece.style.transition='none';
+          // 2. Force browser reflow so it registers the start position
+          piece.getBoundingClientRect();
+          // 3. Now add smooth transition and animate to final position
+          piece.style.transition='transform 0.28s cubic-bezier(0.25,0.8,0.25,1)';
+          piece.style.transform='translate(0,0)';
+        }
         if(isSel&&selHasCapture)piece.classList.add('capturing');
         else if(!isSel&&isOwn(p)&&mustJumpPieces.includes(r+','+c))piece.classList.add('must-capture');
         if(iK(p)){
           const cr=document.createElement('span');cr.className='crown';cr.textContent='♛';
           cr.style.fontSize=Math.round(ps*.42)+'px';piece.appendChild(cr);
         }
-        // Interactivity
-        const myTurn = onlineMode ? (myRole==='host'?turn===R:turn===B) : true;
+        const myTurn=onlineMode?(myRole==='host'?turn===R:turn===B):true;
         if(!ge&&myTurn){
           piece.addEventListener('pointerdown',e=>{
             e.preventDefault();
@@ -962,6 +1112,8 @@ function render(){
       boardEl.appendChild(cell);
     }
   }
+  // Clear lastMove after one render so animation doesn't replay
+  lastMove=null;
 }
 
 // ════════ AI ENGINE ════════
@@ -1005,6 +1157,7 @@ function doAIMove(){
     if(val>bestVal){bestVal=val;bestMove=m;}
   }
   if(!bestMove){aiThinking=false;document.getElementById('ai-thinking').classList.remove('show');return;}
+  lastMove={from:[...bestMove.from],to:[...bestMove.to]};
   board=applyMove(board,bestMove);
   if(bestMove.cap){
     p2cap++;
@@ -1031,6 +1184,7 @@ function doAIMove(){
   if(rc===0){endGame(false);return;}if(bc===0){endGame(true);return;}
   if(!allMoves(board,R).length){endGame(false);return;}
   render();setMsg('');
+  startSkipTimer();
 }
 
 // ════════ TOAST ════════
