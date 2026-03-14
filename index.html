@@ -485,10 +485,23 @@ function initHostPeer(){
     document.getElementById('create-status').textContent='Share this code with your friend';
   });
   peer.on('connection',c=>{
-    conn=c;setupConn('host');
+    conn=c;
+    myRole='host';
     document.getElementById('create-dot').className='status-dot connected';
     document.getElementById('create-status').textContent='Opponent connected! Starting...';
-    setTimeout(()=>startOnlineGame('host'),800);
+    // Set up data handler first
+    conn.on('data',data=>handleOnlineMsg(data));
+    conn.on('close',()=>{
+      if(document.getElementById('game').classList.contains('active')){
+        showConnBanner(false,'Opponent disconnected');
+        setMsg('Opponent left the game');
+        ge=true; stopTimer();
+      }
+    });
+    // Only send start AFTER connection is confirmed open on host side
+    conn.on('open',()=>{
+      setTimeout(()=>startOnlineGame('host'), 300);
+    });
   });
   peer.on('error',e=>{
     document.getElementById('create-status').textContent='Error — try refreshing';
@@ -506,9 +519,33 @@ function joinGame(){
   peer=new Peer(undefined,{debug:0});
   peer.on('open',()=>{
     conn=peer.connect(code,{reliable:true});
-    setupConn('guest');
-    document.getElementById('join-dot').className='status-dot waiting';
-    document.getElementById('join-status').textContent='Waiting for host...';
+    myRole='guest';
+    // Set up data handler BEFORE connection opens
+    conn.on('data',data=>handleOnlineMsg(data));
+    conn.on('open',()=>{
+      document.getElementById('join-dot').className='status-dot connected';
+      document.getElementById('join-status').textContent='Connected! Game starting...';
+      // Tell host we are ready — host will send 'start' in response
+      try{ conn.send({type:'ready'}); }catch(e){}
+      // Safety fallback: if start not received in 3s, ping again
+      setTimeout(()=>{
+        if(!document.getElementById('game').classList.contains('active')){
+          try{ conn.send({type:'ready'}); }catch(e){}
+        }
+      }, 3000);
+    });
+    conn.on('close',()=>{
+      if(document.getElementById('game').classList.contains('active')){
+        showConnBanner(false,'Opponent disconnected');
+        setMsg('Opponent left the game');
+        ge=true; stopTimer();
+      }
+    });
+    conn.on('error',()=>{
+      document.getElementById('join-status').textContent='Connection failed — check the code';
+      document.getElementById('join-dot').className='status-dot error';
+      document.getElementById('join-btn').disabled=false;
+    });
   });
   peer.on('error',e=>{
     document.getElementById('join-status').textContent='Could not connect — check the code';
@@ -520,28 +557,6 @@ function joinGame(){
 function copyCode(){
   if(!myRoomCode)return;
   navigator.clipboard.writeText(myRoomCode).then(()=>showToast('Code copied!'));
-}
-
-function setupConn(role){
-  myRole=role;
-  conn.on('open',()=>{
-    if(role==='guest'){
-      document.getElementById('join-dot').className='status-dot connected';
-      document.getElementById('join-status').textContent='Connected! Game starting...';
-      // Guest is ready — host will send 'start' message which triggers showGame on guest
-    }
-  });
-  conn.on('data',data=>handleOnlineMsg(data));
-  conn.on('close',()=>{
-    if(document.getElementById('game').classList.contains('active')){
-      showConnBanner(false,'Opponent disconnected');
-      setMsg('Opponent left the game');
-      ge=true; stopTimer();
-    }
-  });
-  conn.on('error',()=>{
-    if(document.getElementById('game').classList.contains('active'))showConnBanner(false,'Connection error');
-  });
 }
 
 function startOnlineGame(role){
@@ -607,6 +622,16 @@ function handleOnlineMsg(data){
     document.getElementById('winner-sub').textContent=data.sub;
     buildWinnerBtns(true);
     document.getElementById('winner-ov').classList.add('show');
+  } else if(data.type==='ready'){
+    // Guest is ready and asking for game state — host sends start
+    if(myRole==='host'){
+      if(!document.getElementById('game').classList.contains('active')){
+        startOnlineGame('host');
+      } else {
+        // Game already started, just resend current state
+        sendState({type:'start'});
+      }
+    }
   } else if(data.type==='rematch'){
     if(myRole==='host'){
       // Host accepts and starts fresh, sends state to guest
