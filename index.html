@@ -180,12 +180,10 @@ h1.game-title{font-family:'Cinzel',serif;font-size:clamp(42px,12vw,68px);font-we
 @keyframes must-glow{from{box-shadow:0 0 0px 2px rgba(255,160,0,.3),0 3px 8px rgba(0,0,0,.6)}to{box-shadow:0 0 10px 4px rgba(255,160,0,.75),0 3px 8px rgba(0,0,0,.6)}}
 .mv-dot{width:30%;height:30%;border-radius:50%;background:rgba(0,90,0,.4);pointer-events:none}
 .jmp-dot{width:36%;height:36%;border-radius:50%;background:rgba(160,40,0,.45);pointer-events:none}
-/* Waiting overlay for online mode */
-#waiting-overlay{position:absolute;inset:0;background:rgba(0,0,0,.6);display:none;
-  align-items:center;justify-content:center;border-radius:2px;z-index:5;backdrop-filter:blur(2px);
-  flex-direction:column;gap:10px}
-#waiting-overlay.show{display:flex}
-.waiting-text{font-family:'Cinzel',serif;font-size:14px;color:var(--text2);letter-spacing:2px}
+/* Opponent turn indicator - no overlay */
+#opp-turn-msg{display:none;font-family:'Cinzel',serif;font-size:13px;color:var(--text2);
+  letter-spacing:2px;text-align:center;padding:6px 0}
+#opp-turn-msg.show{display:block}
 
 /* Status & controls */
 .status-msg{min-height:22px;font-family:'Cinzel',serif;font-size:clamp(12px,3.5vw,14px);color:var(--gold);letter-spacing:1px;text-align:center}
@@ -351,12 +349,10 @@ h1.game-title{font-family:'Cinzel',serif;font-size:clamp(42px,12vw,68px);font-we
       <span id="timer-display">5:00</span>
     </div>
 
+    <div id="opp-turn-msg">⏳ Waiting for opponent's move...</div>
+
     <div class="board-container">
       <div id="board"></div>
-      <div id="waiting-overlay">
-        <div class="think-dots"><div class="think-dot"></div><div class="think-dot"></div><div class="think-dot"></div></div>
-        <div class="waiting-text">Opponent's turn...</div>
-      </div>
       <div id="winner-ov">
         <div class="winner-crown">♛</div>
         <div class="winner-title" id="winner-title">Red Wins!</div>
@@ -651,7 +647,7 @@ function sendState(extra){
 }
 
 function showWaitingOverlay(show){
-  document.getElementById('waiting-overlay').classList.toggle('show',show);
+  document.getElementById('opp-turn-msg').classList.toggle('show', show);
 }
 
 function showConnBanner(ok,msg){
