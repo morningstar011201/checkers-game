@@ -161,7 +161,7 @@ h1.game-title{font-family:'Cinzel',serif;font-size:clamp(42px,12vw,68px);font-we
 .board-container{position:relative;width:100%}
 .board-clip{overflow:hidden;border-radius:4px;width:100%;}
 #board{display:grid;grid-template-columns:repeat(8,1fr);border:3px solid var(--bd-border);border-radius:4px;
-  overflow:visible;width:100%;aspect-ratio:1/1;box-shadow:0 8px 40px rgba(0,0,0,.7),0 0 0 1px rgba(201,168,76,.1)}
+  overflow:visible;width:100%;aspect-ratio:1/1;box-shadow:0 8px 40px rgba(0,0,0,.7),0 0 0 1px rgba(201,168,76,.1);position:relative}
 .cell{display:flex;align-items:center;justify-content:center;position:relative;overflow:visible}
 .cell.light{background:var(--bd-light)}.cell.dark{background:var(--bd-dark)}
 .cell.sel{background:#ffd700 !important;filter:brightness(1.05)}
@@ -182,13 +182,16 @@ h1.game-title{font-family:'Cinzel',serif;font-size:clamp(42px,12vw,68px);font-we
 .mv-dot{width:30%;height:30%;border-radius:50%;background:rgba(0,90,0,.4);pointer-events:none}
 .jmp-dot{width:36%;height:36%;border-radius:50%;background:rgba(160,40,0,.45);pointer-events:none}
 
-/* Piece slide animation */
-.piece.sliding{
-  animation: piece-slide 0.22s cubic-bezier(.25,.8,.25,1) forwards;
-  z-index: 20;
-  pointer-events: none;
+/* ── Piece slide animation using CSS custom properties ── */
+@keyframes piece-slide{
+  from{transform:translate(var(--slide-x),var(--slide-y)) scale(1.08)}
+  60%{transform:translate(calc(var(--slide-x)*0.04),calc(var(--slide-y)*0.04)) scale(1.04)}
+  to{transform:translate(0,0) scale(1)}
 }
-@keyframes piece-slide-placeholder{ from{transform:translate(var(--sx),var(--sy))} to{transform:translate(0,0)} }
+.piece.sliding{
+  animation:piece-slide 0.32s cubic-bezier(0.22,1,0.36,1) both;
+  z-index:20;pointer-events:none;
+}
 /* Opponent turn indicator - no overlay */
 #opp-turn-msg{display:none;font-family:'Cinzel',serif;font-size:13px;color:var(--text2);
   letter-spacing:2px;text-align:center;padding:6px 0}
@@ -964,7 +967,7 @@ function doMove(r,c){
   const move=vm.find(m=>m.to[0]===r&&m.to[1]===c);
   if(!move)return;
   stopSkipTimer();
-  lastMove={from:[...move.from],to:[r,c]};
+  lastMove={from:[move.from[0],move.from[1]],to:[r,c]};
   board=applyMove(board,move);
   if(move.cap){
     if(turn===R)p1cap++;else p2cap++;
@@ -1070,16 +1073,11 @@ function render(){
         const ps=Math.round(cs*.74);
         piece.className='piece '+(iR(p)?'rp':'bp')+(iK(p)?' king':'');
         piece.style.cssText=`width:${ps}px;height:${ps}px`;
-        // Apply slide animation to the moved piece — start at offset, animate to 0
+        // Slide animation: set CSS custom properties then add .sliding class
         if(slideFrom&&slideFrom.r===r&&slideFrom.c===c&&(slideFrom.dx!==0||slideFrom.dy!==0)){
-          // 1. Place piece at FROM position instantly (no transition)
-          piece.style.transform=`translate(${slideFrom.dx}px,${slideFrom.dy}px)`;
-          piece.style.transition='none';
-          // 2. Force browser reflow so it registers the start position
-          piece.getBoundingClientRect();
-          // 3. Now add smooth transition and animate to final position
-          piece.style.transition='transform 0.28s cubic-bezier(0.25,0.8,0.25,1)';
-          piece.style.transform='translate(0,0)';
+          piece.style.setProperty('--slide-x', slideFrom.dx+'px');
+          piece.style.setProperty('--slide-y', slideFrom.dy+'px');
+          piece.classList.add('sliding');
         }
         if(isSel&&selHasCapture)piece.classList.add('capturing');
         else if(!isSel&&isOwn(p)&&mustJumpPieces.includes(r+','+c))piece.classList.add('must-capture');
